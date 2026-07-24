@@ -31,7 +31,7 @@ mkdir -p "$CKPT_DIR"
     actor_rollout_ref.model.path="$MODEL_PATH" \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.sft_loss_coeff=0.05 \
-    actor_rollout_ref.actor.sft_start_step=50 \
+    actor_rollout_ref.actor.sft_start_step=100 \
     actor_rollout_ref.actor.ppo_mini_batch_size=32 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
@@ -58,7 +58,7 @@ mkdir -p "$CKPT_DIR"
     trainer.default_local_dir="$CKPT_DIR" \
     trainer.n_gpus_per_node=1 \
     trainer.nnodes=1 \
-    trainer.save_freq=150 \
+    trainer.save_freq=200 \
     trainer.test_freq=10 \
     trainer.total_epochs=15 \
     "$@" 2>&1 | tee verl_demo.log
