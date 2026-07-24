@@ -54,6 +54,26 @@ def sft_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
     return loss, {}
 
 
+def compute_shortest_correct_sft_loss(
+    log_prob: torch.Tensor,
+    response_mask: torch.Tensor,
+    sft_loss_mask: torch.Tensor,
+    dp_size: int,
+    global_batch_size: int,
+    rollout_n: int,
+) -> torch.Tensor:
+    """Compute mean target-trajectory NLL per prompt with global mini-batch normalization."""
+    if rollout_n <= 0:
+        raise ValueError(f"rollout_n must be positive, got {rollout_n}")
+    if global_batch_size <= 0:
+        raise ValueError(f"global_batch_size must be positive, got {global_batch_size}")
+
+    token_count = response_mask.sum(dim=-1).clamp_min(1)
+    sequence_nll = -masked_sum(log_prob, response_mask, axis=-1) / token_count
+    global_prompt_count = global_batch_size / rollout_n
+    return masked_sum(sequence_nll, sft_loss_mask) * dp_size / global_prompt_count
+
+
 def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None):
     """Computes ppo loss from model output (log_prob, entropy, values, etc. ) and old_log_probs from data."""
     log_prob = no_padding_2_padding(model_output["log_probs"], data)
@@ -84,6 +104,8 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
 
     # select fields and convert to padded tensor
     fields = ["response_mask", "old_log_probs", "advantages"]
+    if "sft_loss_mask" in data:
+        fields.append("sft_loss_mask")
     if "rollout_is_weights" in data:
         fields.append("rollout_is_weights")
     if "ref_log_prob" in data:
@@ -118,6 +140,20 @@ def ppo_loss(config: ActorConfig, model_output, data: TensorDict, dp_group=None)
     metrics.update(pg_metrics)
     metrics["actor/pg_loss"] = Metric(value=pg_loss, aggregation=metric_aggregation)
     policy_loss = pg_loss
+
+    if config.sft_loss_coeff > 0.0 and "sft_loss_mask" in data:
+        sft_loss_value = compute_shortest_correct_sft_loss(
+            log_prob=log_prob,
+            response_mask=response_mask,
+            sft_loss_mask=data["sft_loss_mask"],
+            dp_size=config.global_batch_info["dp_size"],
+            global_batch_size=config.global_batch_info["global_batch_size"],
+            rollout_n=config.rollout_n,
+        )
+        weighted_sft_loss = sft_loss_value * config.sft_loss_coeff
+        policy_loss += weighted_sft_loss
+        metrics["actor/sft_loss"] = Metric(value=sft_loss_value, aggregation=AggregationType.SUM)
+        metrics["actor/sft_loss_weighted"] = Metric(value=weighted_sft_loss, aggregation=AggregationType.SUM)
 
     # add entropy loss
     if entropy is not None:

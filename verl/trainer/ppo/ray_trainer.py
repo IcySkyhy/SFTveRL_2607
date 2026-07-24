@@ -49,6 +49,7 @@ from verl.trainer.ppo.metric_utils import (
     process_validation_metrics,
 )
 from verl.trainer.ppo.reward import extract_reward
+from verl.trainer.ppo.sft_utils import build_shortest_correct_sft_mask, is_sft_enabled
 from verl.trainer.ppo.utils import (
     Role,
     WorkerType,
@@ -401,10 +402,11 @@ class RayPPOTrainer:
             collate_fn = default_collate_fn
 
         num_workers = self.config.data["dataloader_num_workers"]
+        gen_batch_size = self.config.data.get("gen_batch_size", None) or self.config.data.train_batch_size
 
         self.train_dataloader = StatefulDataLoader(
             dataset=self.train_dataset,
-            batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
+            batch_size=gen_batch_size,
             num_workers=num_workers,
             drop_last=True,
             collate_fn=collate_fn,
@@ -1529,6 +1531,27 @@ class RayPPOTrainer:
 
                         # extract reward_tensor and reward_extra_infos_dict for training
                         reward_tensor, reward_extra_infos_dict = extract_reward(batch)
+
+                        actor_config = self.config.actor_rollout_ref.actor
+                        if actor_config.sft_loss_coeff > 0.0:
+                            sft_loss_mask, sft_metrics = build_shortest_correct_sft_mask(
+                                uids=batch.non_tensor_batch["uid"],
+                                response_mask=batch.batch["response_mask"],
+                                reward_extra_infos=reward_extra_infos_dict,
+                                token_level_scores=reward_tensor,
+                            )
+                            sft_enabled = is_sft_enabled(
+                                actor_config.sft_loss_coeff,
+                                current_step=self.global_steps,
+                                sft_start_step=actor_config.sft_start_step,
+                            )
+                            if not sft_enabled:
+                                sft_loss_mask.zero_()
+                            batch.batch["sft_loss_mask"] = sft_loss_mask
+                            metrics.update(sft_metrics)
+                            metrics["sft/enabled"] = float(sft_enabled)
+                            metrics["sft/current_step"] = self.global_steps
+                            metrics["sft/start_step"] = actor_config.sft_start_step
 
                     # Operating Mode Selection:
                     # - Bypass mode: Sets old_log_probs = rollout_log_probs (2 policies: π_rollout, π_θ)

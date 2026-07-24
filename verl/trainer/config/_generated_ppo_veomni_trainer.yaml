@@ -85,6 +85,8 @@ actor_rollout_ref:
     clip_ratio_c: 3.0
     loss_agg_mode: token-mean
     loss_scale_factor: null
+    sft_loss_coeff: 0.0
+    sft_start_step: 1
     entropy_coeff: 0
     calculate_entropy: false
     calculate_sum_pi_squared: false

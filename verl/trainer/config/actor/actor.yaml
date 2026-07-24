@@ -85,6 +85,12 @@ loss_agg_mode: token-mean
 # If null, uses response_length. Set to a constant to ensure consistent normalization.
 loss_scale_factor: null
 
+# Weight of the SFT loss on the shortest correct trajectory in each rollout group
+sft_loss_coeff: 0.0
+
+# First 1-based global step in which the SFT loss is active
+sft_start_step: 1
+
 # Entropy regularization coefficient in PPO loss
 entropy_coeff: 0
 
@@ -310,4 +316,3 @@ qat:
 
   # Path to vLLM quantization config JSON file
   quantization_config_path: null
-

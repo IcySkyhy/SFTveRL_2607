@@ -122,6 +122,8 @@ class ActorConfig(BaseConfig):
         loss_agg_mode (str): Loss aggregation mode. Options: 'token-mean', 'sample-mean'.
         loss_scale_factor (Optional[int]): Scale factor for 'seq-mean-token-sum-norm' loss aggregation mode.
             If None, uses response_length. Set to a constant to ensure consistent normalization.
+        sft_loss_coeff (float): Weight applied to the shortest-correct-trajectory SFT loss.
+        sft_start_step (int): First 1-based global step in which the SFT loss is active.
         entropy_coeff (float): Entropy coefficient for regularization.
         tau_pos (float): Positive tau for SAPO smoothing (>= 1.0 keeps rewards stable).
         tau_neg (float): Negative tau for SAPO smoothing (> tau_pos for asymmetry).
@@ -163,6 +165,8 @@ class ActorConfig(BaseConfig):
     clip_ratio_c: float = 3.0
     loss_agg_mode: str = "token-mean"
     loss_scale_factor: Optional[int] = None
+    sft_loss_coeff: float = 0.0
+    sft_start_step: int = 1
     entropy_coeff: float = 0
     tau_pos: float = 1.0
     tau_neg: float = 1.05
